@@ -238,7 +238,7 @@ class UCB
           max=ucb;
           arm=i;
         }
-        cout<<endl;
+        
       }
     
       //cout << "arm="<<arm<<endl;
@@ -246,8 +246,14 @@ class UCB
     }
     else {
       arm=pull%n_arms;
+      if(arm>=0)
+      {
+        average_reward[arm] = ((average_reward[arm] * pulls[arm]) + reward)/(pulls[arm] + 1);
+        pulls[arm]+=1;
+      }
       if(pull == n_arms-1)
         init_flag=1;
+
       //cout << "First run, arm="<<arm<<endl;
       return arm;
     }
@@ -260,6 +266,7 @@ class Thompson{
     float* failures;
     int arm=-1;
     int n_arms;
+    int* pull_count;
     
 
     /*
@@ -276,22 +283,27 @@ class Thompson{
       n_arms=num_arms;
       success = new float[n_arms];
       failures = new float[n_arms];
+      pull_count = new int[n_arms];
+
+      for(int i=0;i<n_arms;i++){
+        success[i]=0;
+        failures[i]=0;
+        pull_count[i]=0;
+      }
       
     }
 
-    int update(int reward){
+    int update(int reward,int pulls){
       if(arm<0){
         
       }
       else{
-        if(reward==0)
-          failures[arm]+=1;
-        
-        else
-          success[arm]+=1;
+        success[arm]+=reward;
+        failures[arm]=pull_count[arm]-success[arm];
       }
       
       arm =sample();
+      pull_count[arm]+=1;
       return arm;
     }
 
@@ -358,6 +370,12 @@ class KL_UCB
     }
     else {
       arm=pull%n_arms;
+      if(arm>=0)
+      {
+        average_reward[arm] = ((average_reward[arm] * pulls[arm]) + reward)/(pulls[arm] + 1);
+        pulls[arm]+=1;
+      }
+      
       if(pull == n_arms-1)
         init_flag=1;
       //cout << "First run, arm="<<arm<<endl;
@@ -384,10 +402,9 @@ int main(int argc, char *argv[]){
     options();
     return 1;
   }
-  epsilon_greedy eppo(numArms,epsilon);
-  UCB adversity(numArms);
-  Thompson tom(numArms);
-  KL_UCB kl_ucb(numArms);
+  //UCB adversity(numArms);
+  //Thompson tom(numArms);
+  //KL_UCB kl_ucb(numArms);
   struct sockaddr_in remoteSocketInfo;
   struct hostent *hPtr;
   int socketHandle;
@@ -420,32 +437,37 @@ int main(int argc, char *argv[]){
   char sendBuf[256];
   char recvBuf[256];
 
+
+  Thompson *adversity = new Thompson(numArms);
+
   float reward = 0;
   unsigned long int pulls=0;
-  int armToPull = kl_ucb.update(reward,pulls);//sampleArm(algorithm, epsilon, pulls, reward, numArms,eppo);
+  int armToPull = adversity->update(reward,pulls);//sampleArm(algorithm, epsilon, pulls, reward, numArms,eppo);
   
   sprintf(sendBuf, "%d", armToPull);
 
   cout << "Sending action " << armToPull << ".\n";
   while(send(socketHandle, sendBuf, strlen(sendBuf)+1, MSG_NOSIGNAL) >= 0){
+    
 
     char temp;
     recv(socketHandle, recvBuf, 256, 0);
     sscanf(recvBuf, "%f %c %lu", &reward, &temp, &pulls);
-    cout << "Received reward " << reward << ".\n";
-    cout<<"Num of  pulls "<<pulls<<".\n";
+    //cout << "Received reward " << reward << ".\n";
+    //cout<<"Num of  pulls "<<pulls<<".\n";
 
 
-    armToPull = kl_ucb.update(reward,pulls);//sampleArm(algorithm, epsilon, pulls, reward, numArms,eppo);
+    armToPull = adversity->update(reward,pulls);//sampleArm(algorithm, epsilon, pulls, reward, numArms,eppo);
 
     sprintf(sendBuf, "%d", armToPull);
-    cout << "Sending action " << armToPull << ".\n";
+    //cout << "Sending action " << armToPull << ".\n";
+    
+    
+
+    //cout << "Terminating.\n";
+   
   }
-  
-  close(socketHandle);
-
-  cout << "Terminating.\n";
-
-  return 0;
+  delete adversity;
+  close(socketHandle);  
 }
           
